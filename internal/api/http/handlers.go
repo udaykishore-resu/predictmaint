@@ -97,7 +97,7 @@ func (s *Server) handleAssetHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListAlerts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f := ports.AlertFilter{Site: sanitizeSite(q.Get("site")), AssetID: q.Get("asset_id"), Limit: clampLimit(q.Get("limit"), 100, 1000)}
+	f := ports.AlertFilter{Site: sanitizeSite(q.Get("site")), AssetID: q.Get("asset_id"), Limit: clampLimit(q.Get("limit"))}
 	if st := q.Get("status"); st != "" {
 		switch alerting.Status(st) {
 		case alerting.StatusOpen, alerting.StatusConfirmed, alerting.StatusDismissed:
@@ -157,7 +157,7 @@ func (s *Server) handleFeedback(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListWorkOrders(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f := ports.WorkOrderFilter{Site: sanitizeSite(q.Get("site")), AssetID: q.Get("asset_id"), Limit: clampLimit(q.Get("limit"), 100, 1000)}
+	f := ports.WorkOrderFilter{Site: sanitizeSite(q.Get("site")), AssetID: q.Get("asset_id"), Limit: clampLimit(q.Get("limit"))}
 	if st := q.Get("status"); st != "" {
 		switch cmms.Status(st) {
 		case cmms.StatusOpen, cmms.StatusCancelled, cmms.StatusClosed:

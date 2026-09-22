@@ -74,7 +74,11 @@ func run() error {
 	default:
 		store = memory.New()
 	}
-	defer store.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Error("store close", "err", err)
+		}
+	}()
 
 	simCMMS := cmms.NewSimulated()
 	eng, err := engine.New(ctx, engine.Options{

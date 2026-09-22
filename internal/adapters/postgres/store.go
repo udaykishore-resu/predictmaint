@@ -73,7 +73,9 @@ func (s *Store) Migrate(ctx context.Context, dir string) error {
 		if exists {
 			continue
 		}
-		sqlBytes, err := os.ReadFile(filepath.Join(dir, f))
+		// Path is built from the operator-configured migrations directory and a
+		// directory-listing entry (not user input); Clean keeps gosec G304 honest.
+		sqlBytes, err := os.ReadFile(filepath.Clean(filepath.Join(dir, f)))
 		if err != nil {
 			return fmt.Errorf("postgres: read %s: %w", f, err)
 		}

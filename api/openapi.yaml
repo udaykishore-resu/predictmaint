@@ -15,13 +15,21 @@ info:
     identifier: Apache-2.0
 servers:
   - url: http://localhost:8080
+security:
+  - bearerAuth: []
 tags:
   - name: ingest
+    description: Metric ingestion (plantstream-shaped batches).
   - name: assets
+    description: Fleet listing and per-asset fused health.
   - name: alerts
+    description: Alert lifecycle and technician feedback.
   - name: workorders
+    description: CMMS work orders raised from alerts.
   - name: templates
+    description: Asset-class detection and alerting templates.
   - name: ops
+    description: Liveness, readiness, Prometheus metrics and programme stats.
 
 paths:
   /v1/metrics:
@@ -67,6 +75,7 @@ paths:
                     samples: [0.91, 0.12, -0.77, -1.02]
                     ts: "2026-03-01T06:00:00Z"
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "202":
           description: Batch processed (possibly with per-metric rejections)
           content:
@@ -90,6 +99,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/site"
       responses:
+        default: { $ref: "#/components/responses/Default" }
+        "4XX": { $ref: "#/components/responses/ClientError" }
         "200":
           description: Fleet summary
           content:
@@ -109,6 +120,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/assetId"
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "200":
           description: Health
           content:
@@ -131,6 +143,7 @@ paths:
           schema: { $ref: "#/components/schemas/AlertStatus" }
         - $ref: "#/components/parameters/limit"
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "200":
           description: Alerts
           content:
@@ -152,6 +165,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/alertId"
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "200":
           description: Alert
           content:
@@ -178,6 +192,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/FeedbackRequest" }
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "200":
           description: Updated alert including the adaptation applied
           content:
@@ -206,6 +221,7 @@ paths:
           schema: { $ref: "#/components/schemas/WorkOrderStatus" }
         - $ref: "#/components/parameters/limit"
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "200":
           description: Work orders
           content:
@@ -230,6 +246,7 @@ paths:
           required: true
           schema: { type: string }
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "200":
           description: Work order
           content:
@@ -243,6 +260,8 @@ paths:
       operationId: listTemplates
       summary: List active asset-class templates
       responses:
+        default: { $ref: "#/components/responses/Default" }
+        "4XX": { $ref: "#/components/responses/ClientError" }
         "200":
           description: Templates
           content:
@@ -262,6 +281,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/class"
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "200":
           description: Template
           content:
@@ -284,6 +304,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/Template" }
       responses:
+        default: { $ref: "#/components/responses/Default" }
         "200":
           description: Stored template
           content:
@@ -305,6 +326,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/site"
       responses:
+        default: { $ref: "#/components/responses/Default" }
+        "4XX": { $ref: "#/components/responses/ClientError" }
         "200":
           description: Stats
           content:
@@ -315,8 +338,11 @@ paths:
     get:
       tags: [ops]
       operationId: healthz
+      security: []
       summary: Liveness
       responses:
+        default: { $ref: "#/components/responses/Default" }
+        "4XX": { $ref: "#/components/responses/ClientError" }
         "200":
           description: Alive
           content:
@@ -330,8 +356,11 @@ paths:
     get:
       tags: [ops]
       operationId: readyz
+      security: []
       summary: Readiness (store, Kafka when enabled)
       responses:
+        default: { $ref: "#/components/responses/Default" }
+        "4XX": { $ref: "#/components/responses/ClientError" }
         "200":
           description: Ready
           content:
@@ -346,14 +375,24 @@ paths:
     get:
       tags: [ops]
       operationId: metrics
+      security: []
       summary: Prometheus exposition
       responses:
+        default: { $ref: "#/components/responses/Default" }
+        "4XX": { $ref: "#/components/responses/ClientError" }
         "200":
           description: Metrics
           content:
             text/plain: {}
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        Bearer token expected on /v1 routes. The service itself does not
+        validate tokens; enforce this at the ingress or gateway in front of it.
   parameters:
     site:
       name: site
@@ -381,6 +420,16 @@ components:
       schema: { type: string, examples: [pump, motor, compressor] }
 
   responses:
+    Default:
+      description: Unexpected error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ClientError:
+      description: Client error (for example 404 for an unknown route or 405 for a wrong method)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     NotFound:
       description: Not found
       content:
@@ -677,7 +726,7 @@ components:
             off_threshold: { type: number }
             min_persistence: { type: integer }
             clear_persistence: { type: integer }
-            suppression: { type: string, description: Go duration, e.g. "2h0m0s" }
+            suppression: { type: string, description: 'Go duration, e.g. "2h0m0s"' }
             max_alerts_per_asset_per_hour: { type: integer }
             max_alerts_per_site_per_hour: { type: integer }
             adaptation:

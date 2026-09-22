@@ -80,7 +80,7 @@ func TestBearingDegradationEndToEnd(t *testing.T) {
 	s := sim.New(cfg)
 	const steps = 200
 	var firstAlertStep = -1
-	riskAtDegradeStart, riskAtEnd := -1.0, -1.0
+	riskAtDegradeStart := -1.0
 	for i := 0; i < steps; i++ {
 		res, err := e.Ingest(ctx, s.Next())
 		require.NoError(t, err, "step %d", i)
@@ -97,7 +97,7 @@ func TestBearingDegradationEndToEnd(t *testing.T) {
 	bad := s.AssetID(2)
 	h, err := e.Health(bad)
 	require.NoError(t, err)
-	riskAtEnd = h.Risk
+	riskAtEnd := h.Risk
 
 	alerts, err := store.ListAlerts(ctx, ports.AlertFilter{})
 	require.NoError(t, err)

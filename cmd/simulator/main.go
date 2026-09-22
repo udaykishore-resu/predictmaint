@@ -125,7 +125,7 @@ func post(ctx context.Context, c *http.Client, url string, body any) (engine.Ing
 	if err != nil {
 		return res, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // close error on a read-only response body is not actionable
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode/100 != 2 {
 		return res, fmt.Errorf("POST %s: %s: %s", url, resp.Status, string(data))
@@ -156,7 +156,7 @@ func getJSON(ctx context.Context, c *http.Client, url string, v any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // close error on a read-only response body is not actionable
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: %s", url, resp.Status)
 	}

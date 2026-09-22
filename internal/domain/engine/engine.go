@@ -749,7 +749,7 @@ func (e *Engine) Template(class string) (template.Template, bool) {
 // restart.
 func (e *Engine) PutTemplate(ctx context.Context, t template.Template) (template.Template, error) {
 	if err := t.Validate(); err != nil {
-		return t, fmt.Errorf("%w: %v", ErrInvalidTemplate, err)
+		return t, fmt.Errorf("%w: %w", ErrInvalidTemplate, err)
 	}
 	t.UpdatedAt = e.now()
 	e.mu.Lock()

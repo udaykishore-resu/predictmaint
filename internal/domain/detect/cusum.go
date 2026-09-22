@@ -25,10 +25,9 @@ func (p CUSUMParams) withDefaults() CUSUMParams {
 
 // CUSUM is the per-asset drift tracker state.
 type CUSUM struct {
-	p      CUSUMParams
-	gPos   float64
-	gNeg   float64
-	frozen bool
+	p    CUSUMParams
+	gPos float64
+	gNeg float64
 }
 
 // CUSUMResult is the detector output.

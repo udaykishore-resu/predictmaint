@@ -65,8 +65,8 @@ func (f *fixture) do(t *testing.T, method, path string, body any) (*http.Respons
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close() // body fully consumed above; close error is irrelevant in tests
 	require.NoError(t, err)
 	return resp, data
 }
@@ -133,7 +133,7 @@ func TestEndToEndOverHTTP(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, string(body), `"asset_id":"pump-003"`)
 
-	resp, body = f.do(t, http.MethodGet, "/v1/alerts/"+alert.ID, nil)
+	resp, _ = f.do(t, http.MethodGet, "/v1/alerts/"+alert.ID, nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	resp, _ = f.do(t, http.MethodGet, "/v1/alerts/nope", nil)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
@@ -260,11 +260,11 @@ func TestRecoverMiddleware(t *testing.T) {
 }
 
 func TestClampLimit(t *testing.T) {
-	assert.Equal(t, 100, clampLimit("", 100, 1000))
-	assert.Equal(t, 100, clampLimit("abc", 100, 1000))
-	assert.Equal(t, 100, clampLimit("0", 100, 1000))
-	assert.Equal(t, 7, clampLimit("7", 100, 1000))
-	assert.Equal(t, 1000, clampLimit("99999999999", 100, 1000))
+	assert.Equal(t, 100, clampLimit(""))
+	assert.Equal(t, 100, clampLimit("abc"))
+	assert.Equal(t, 100, clampLimit("0"))
+	assert.Equal(t, 7, clampLimit("7"))
+	assert.Equal(t, 1000, clampLimit("99999999999"))
 }
 
 func TestListenAndServeShutsDownCleanly(t *testing.T) {
@@ -279,7 +279,7 @@ func TestListenAndServeShutsDownCleanly(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		resp, err = http.Get("http://127.0.0.1:18899/")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close() // probe only; body content and close error are irrelevant
 			break
 		}
 		time.Sleep(20 * time.Millisecond)

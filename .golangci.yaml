@@ -27,7 +27,9 @@ linters:
   exclusions:
     rules:
       - path: _test\.go
-        linters: [gosec, errorlint, unparam]
+        # bodyclose: the test HTTP helper reads and closes the body before
+        # returning *http.Response; the linter cannot see through the helper.
+        linters: [gosec, errorlint, unparam, bodyclose]
 formatters:
   enable:
     - gofmt

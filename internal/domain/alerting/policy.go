@@ -85,7 +85,7 @@ type Duration struct{ time.Duration }
 
 // MarshalJSON renders "10m0s"-style strings.
 func (d Duration) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + d.Duration.String() + `"`), nil
+	return []byte(`"` + d.String() + `"`), nil
 }
 
 // UnmarshalJSON accepts duration strings or integer nanoseconds.

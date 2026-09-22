@@ -108,8 +108,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = enc.Encode(v)
 }
 
-func writeError(w http.ResponseWriter, status int, code, msg string, details ...string) {
-	writeJSON(w, status, errorBody{Error: msg, Code: code, Details: details})
+func writeError(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, errorBody{Error: msg, Code: code})
 }
 
 func (s *Server) decode(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -144,22 +144,29 @@ func (s *Server) domainError(w http.ResponseWriter, err error) {
 	}
 }
 
-func clampLimit(raw string, def, max int) int {
+// defaultLimit is the page size used when a list request omits or
+// mis-specifies ?limit; maxLimit caps what a caller may ask for.
+const (
+	defaultLimit = 100
+	maxLimit     = 1000
+)
+
+func clampLimit(raw string) int {
 	if raw == "" {
-		return def
+		return defaultLimit
 	}
 	n := 0
 	for _, c := range raw {
 		if c < '0' || c > '9' {
-			return def
+			return defaultLimit
 		}
 		n = n*10 + int(c-'0')
-		if n > max {
-			return max
+		if n > maxLimit {
+			return maxLimit
 		}
 	}
 	if n == 0 {
-		return def
+		return defaultLimit
 	}
 	return n
 }
