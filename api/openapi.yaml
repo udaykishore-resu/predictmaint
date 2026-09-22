@@ -1,0 +1,731 @@
+openapi: 3.1.0
+info:
+  title: predictmaint API
+  version: "1.0.0"
+  summary: Predictive maintenance at fleet scale
+  description: |
+    Ingest plantstream-shaped metrics, read fused asset health, manage
+    alerts with technician feedback, inspect CMMS work orders, and tune
+    asset-class templates. All decisions carry the rule version that produced
+    them so they can be audited.
+  contact:
+    name: Udaykishore Resu
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: ingest
+  - name: assets
+  - name: alerts
+  - name: workorders
+  - name: templates
+  - name: ops
+
+paths:
+  /v1/metrics:
+    post:
+      tags: [ingest]
+      operationId: ingestMetrics
+      summary: Ingest a batch of metrics
+      description: |
+        Accepts either a bare JSON array of metrics or an object with a
+        `metrics` array. Replays are safe: a metric whose timestamp is not
+        newer than the last accepted one for the same asset and signal is
+        counted as a duplicate and ignored. A first-seen asset must carry
+        `asset_class` so a template can be bound.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: array
+                  items: { $ref: "#/components/schemas/Metric" }
+                - type: object
+                  required: [metrics]
+                  properties:
+                    metrics:
+                      type: array
+                      items: { $ref: "#/components/schemas/Metric" }
+            examples:
+              scalarAndBurst:
+                value:
+                  - asset_id: pump-001
+                    site: plant-a
+                    asset_class: pump
+                    signal: bearing_temp
+                    unit: F
+                    value: 136.4
+                    ts: "2026-03-01T06:00:00Z"
+                  - asset_id: pump-001
+                    site: plant-a
+                    asset_class: pump
+                    signal: vibration
+                    unit: mm/s
+                    samples: [0.91, 0.12, -0.77, -1.02]
+                    ts: "2026-03-01T06:00:00Z"
+      responses:
+        "202":
+          description: Batch processed (possibly with per-metric rejections)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResult" }
+        "400":
+          description: Malformed body, empty batch, or every metric rejected
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Error"
+                  - $ref: "#/components/schemas/IngestResult"
+        "413": { $ref: "#/components/responses/TooLarge" }
+
+  /v1/assets:
+    get:
+      tags: [assets]
+      operationId: listAssets
+      summary: List tracked assets sorted by risk
+      parameters:
+        - $ref: "#/components/parameters/site"
+      responses:
+        "200":
+          description: Fleet summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assets:
+                    type: array
+                    items: { $ref: "#/components/schemas/AssetSummary" }
+
+  /v1/assets/{id}/health:
+    get:
+      tags: [assets]
+      operationId: getAssetHealth
+      summary: Current health of one asset
+      parameters:
+        - $ref: "#/components/parameters/assetId"
+      responses:
+        "200":
+          description: Health
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/alerts:
+    get:
+      tags: [alerts]
+      operationId: listAlerts
+      summary: List alerts newest-first
+      parameters:
+        - $ref: "#/components/parameters/site"
+        - name: asset_id
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/AlertStatus" }
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Alert" }
+                  count: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/alerts/{id}:
+    get:
+      tags: [alerts]
+      operationId: getAlert
+      summary: Fetch one alert
+      parameters:
+        - $ref: "#/components/parameters/alertId"
+      responses:
+        "200":
+          description: Alert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Alert" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/alerts/{id}/feedback:
+    post:
+      tags: [alerts]
+      operationId: alertFeedback
+      summary: Record a technician verdict
+      description: |
+        `confirm` marks a true positive and lowers the asset's alert
+        threshold by the class `confirm_step`; `dismiss` marks a false alarm
+        and raises it by `dismiss_step`. Movement is clamped to
+        `max_offset` and `max_threshold` (rule `ADAPT-1`). Repeating the same
+        verdict is idempotent; a conflicting verdict returns 409.
+      parameters:
+        - $ref: "#/components/parameters/alertId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeedbackRequest" }
+      responses:
+        "200":
+          description: Updated alert including the adaptation applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Alert" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Alert already has a different verdict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/workorders:
+    get:
+      tags: [workorders]
+      operationId: listWorkOrders
+      summary: List work orders newest-first
+      parameters:
+        - $ref: "#/components/parameters/site"
+        - name: asset_id
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/WorkOrderStatus" }
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Work orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  work_orders:
+                    type: array
+                    items: { $ref: "#/components/schemas/WorkOrder" }
+                  count: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /v1/workorders/{id}:
+    get:
+      tags: [workorders]
+      operationId: getWorkOrder
+      summary: Fetch one work order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Work order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkOrder" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/templates:
+    get:
+      tags: [templates]
+      operationId: listTemplates
+      summary: List active asset-class templates
+      responses:
+        "200":
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  templates:
+                    type: array
+                    items: { $ref: "#/components/schemas/Template" }
+
+  /v1/templates/{class}:
+    get:
+      tags: [templates]
+      operationId: getTemplate
+      summary: Fetch one template
+      parameters:
+        - $ref: "#/components/parameters/class"
+      responses:
+        "200":
+          description: Template
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Template" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [templates]
+      operationId: putTemplate
+      summary: Create or replace a template
+      description: |
+        Validated as a whole before activation. Assets of the class are
+        rebuilt on the new recipe: learned baselines survive for features
+        that still exist, threshold offsets survive, detector windows restart.
+      parameters:
+        - $ref: "#/components/parameters/class"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Template" }
+      responses:
+        "200":
+          description: Stored template
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Template" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422":
+          description: Template failed validation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/stats:
+    get:
+      tags: [ops]
+      operationId: getStats
+      summary: Programme metrics (alerts/day, precision proxy, MTTA)
+      parameters:
+        - $ref: "#/components/parameters/site"
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stats" }
+
+  /healthz:
+    get:
+      tags: [ops]
+      operationId: healthz
+      summary: Liveness
+      responses:
+        "200":
+          description: Alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ok }
+                  version: { type: string }
+  /readyz:
+    get:
+      tags: [ops]
+      operationId: readyz
+      summary: Readiness (store, Kafka when enabled)
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Readiness" }
+        "503":
+          description: A dependency check failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Readiness" }
+  /metrics:
+    get:
+      tags: [ops]
+      operationId: metrics
+      summary: Prometheus exposition
+      responses:
+        "200":
+          description: Metrics
+          content:
+            text/plain: {}
+
+components:
+  parameters:
+    site:
+      name: site
+      in: query
+      schema: { type: string }
+      description: Filter by site; empty means all sites.
+    limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+    assetId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    alertId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    class:
+      name: class
+      in: path
+      required: true
+      schema: { type: string, examples: [pump, motor, compressor] }
+
+  responses:
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: Body exceeds HTTP_MAX_BODY_BYTES
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: string }
+        details:
+          type: array
+          items: { type: string }
+
+    Metric:
+      type: object
+      required: [asset_id, signal, ts]
+      properties:
+        asset_id: { type: string, maxLength: 128, pattern: "^[A-Za-z0-9._:/-]+$" }
+        site: { type: string, default: default }
+        asset_class:
+          type: string
+          description: Required the first time an asset is seen.
+        signal: { type: string }
+        unit:
+          type: string
+          description: Any unit convertible to the template's canonical unit (mm/s, in/s, C, F, K, bar, psi, kPa, A, rpm, Hz, h, min ...).
+        value: { type: number }
+        samples:
+          type: array
+          items: { type: number }
+          maxItems: 16384
+          description: Waveform burst captured at `ts`; takes precedence over `value`.
+        ts: { type: string, format: date-time }
+        source: { type: string }
+
+    IngestResult:
+      type: object
+      properties:
+        accepted: { type: integer }
+        rejected: { type: integer }
+        duplicates: { type: integer }
+        evaluations: { type: integer }
+        alerts_fired: { type: integer }
+        work_orders_created: { type: integer }
+        errors:
+          type: array
+          items: { type: string }
+          description: Up to 20 per-metric rejection reasons.
+
+    AssetSummary:
+      type: object
+      properties:
+        asset_id: { type: string }
+        site: { type: string }
+        asset_class: { type: string }
+        risk: { type: number }
+        health_index: { type: number }
+        alert_state: { $ref: "#/components/schemas/AlertState" }
+        baseline_source: { type: string, enum: [class, asset] }
+
+    AlertState:
+      type: string
+      enum: [normal, pending, active]
+
+    Contributor:
+      type: object
+      properties:
+        feature: { type: string }
+        z: { type: number }
+        value: { type: number }
+
+    Health:
+      type: object
+      properties:
+        asset_id: { type: string }
+        site: { type: string }
+        asset_class: { type: string }
+        template_version: { type: string }
+        health_index: { type: number, description: 1 - risk }
+        risk: { type: number }
+        anomaly: { type: number }
+        drift: { type: number }
+        prior: { type: number }
+        confidence: { type: number }
+        alert_state: { $ref: "#/components/schemas/AlertState" }
+        effective_threshold: { type: number }
+        threshold_offset: { type: number }
+        baseline_source: { type: string, enum: [class, asset] }
+        warmup_progress: { type: number }
+        window_fill: { type: number }
+        evaluations: { type: integer }
+        age_hours: { type: number }
+        last_event_time: { type: string, format: date-time }
+        last_seen: { type: string, format: date-time }
+        open_alert_id: { type: string }
+        top_contributors:
+          type: array
+          items: { $ref: "#/components/schemas/Contributor" }
+        detectors:
+          type: object
+          description: Latest raw output of each detector and the policy decision, for audit.
+          additionalProperties: true
+        features:
+          type: object
+          additionalProperties: { type: number }
+
+    AlertStatus:
+      type: string
+      enum: [open, confirmed, dismissed]
+
+    Decision:
+      type: object
+      properties:
+        outcome: { type: string, enum: [none, pending, fire, suppressed, rate_limited, hold, clear] }
+        state: { $ref: "#/components/schemas/AlertState" }
+        risk: { type: number }
+        effective_threshold: { type: number }
+        persistence: { type: integer }
+        reason: { type: string }
+        rule: { type: string }
+        mean_risk: { type: number }
+
+    Adaptation:
+      type: object
+      properties:
+        verdict: { type: string, enum: [confirm, dismiss] }
+        offset_before: { type: number }
+        offset_after: { type: number }
+        threshold_before: { type: number }
+        threshold_after: { type: number }
+        clamped: { type: boolean }
+        rule: { type: string }
+
+    Alert:
+      type: object
+      properties:
+        id: { type: string }
+        asset_id: { type: string }
+        site: { type: string }
+        asset_class: { type: string }
+        failure_mode: { type: string }
+        risk: { type: number }
+        confidence: { type: number }
+        anomaly: { type: number }
+        drift: { type: number }
+        prior: { type: number }
+        status: { $ref: "#/components/schemas/AlertStatus" }
+        event_time: { type: string, format: date-time }
+        detected_at: { type: string, format: date-time }
+        cleared_at: { type: string, format: date-time }
+        feedback_at: { type: string, format: date-time }
+        technician: { type: string }
+        note: { type: string }
+        contributors:
+          type: array
+          items: { $ref: "#/components/schemas/Contributor" }
+        decision: { $ref: "#/components/schemas/Decision" }
+        rules:
+          type: array
+          items: { type: string }
+        template_version: { type: string }
+        work_order_id: { type: string }
+        adaptation: { $ref: "#/components/schemas/Adaptation" }
+
+    FeedbackRequest:
+      type: object
+      required: [verdict]
+      additionalProperties: false
+      properties:
+        verdict: { type: string, enum: [confirm, dismiss] }
+        technician: { type: string, maxLength: 128 }
+        note: { type: string, maxLength: 2000 }
+
+    WorkOrderStatus:
+      type: string
+      enum: [open, cancelled, closed]
+
+    WorkOrder:
+      type: object
+      properties:
+        id: { type: string }
+        alert_id: { type: string }
+        asset_id: { type: string }
+        site: { type: string }
+        asset_class: { type: string }
+        failure_mode: { type: string }
+        priority: { type: integer, minimum: 1, maximum: 5 }
+        confidence: { type: number }
+        risk: { type: number }
+        description: { type: string }
+        status: { $ref: "#/components/schemas/WorkOrderStatus" }
+        created_at: { type: string, format: date-time }
+        required_by: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        external:
+          type: object
+          properties:
+            system: { type: string }
+            id: { type: string }
+            url: { type: string }
+        idempotency_key: { type: string }
+        rule: { type: string }
+
+    Template:
+      type: object
+      description: Full monitoring recipe for an asset class. See GET /v1/templates/pump for a complete example.
+      required: [class, version, signals, detectors, prior, fusion, alerting, work_order, warmup_evaluations]
+      properties:
+        class: { type: string }
+        version: { type: string }
+        description: { type: string }
+        signals:
+          type: array
+          items:
+            type: object
+            required: [name, unit, window]
+            properties:
+              name: { type: string }
+              unit: { type: string }
+              window: { type: integer, minimum: 2 }
+              sample_rate_hz: { type: number }
+              min_samples: { type: integer }
+              stats:
+                type: array
+                items: { type: string, enum: [mean, std, rms, kurtosis, crest] }
+              bands:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    freq_hz: { type: number }
+        runtime_signal: { type: string }
+        detectors:
+          type: object
+          properties:
+            robust_z:
+              type: object
+              properties:
+                threshold: { type: number }
+                min_mad_rel: { type: number }
+                min_mad_abs: { type: number }
+                direction:
+                  type: object
+                  additionalProperties: { type: string, enum: [both, up, down] }
+            hst:
+              type: object
+              properties:
+                trees: { type: integer }
+                depth: { type: integer }
+                window_size: { type: integer }
+                seed: { type: integer }
+                z_range: { type: number }
+            cusum:
+              type: object
+              properties:
+                feature: { type: string }
+                k: { type: number }
+                h: { type: number }
+                direction: { type: string }
+        prior:
+          type: object
+          properties:
+            shape: { type: number }
+            scale_hours: { type: number }
+            horizon_hours: { type: number }
+            default_age_hours: { type: number }
+        fusion:
+          type: object
+          properties:
+            w_anomaly: { type: number }
+            w_drift: { type: number }
+            w_prior: { type: number }
+            agreement_threshold: { type: number }
+            hst_share: { type: number }
+        alerting:
+          type: object
+          properties:
+            on_threshold: { type: number }
+            off_threshold: { type: number }
+            min_persistence: { type: integer }
+            clear_persistence: { type: integer }
+            suppression: { type: string, description: Go duration, e.g. "2h0m0s" }
+            max_alerts_per_asset_per_hour: { type: integer }
+            max_alerts_per_site_per_hour: { type: integer }
+            adaptation:
+              type: object
+              properties:
+                dismiss_step: { type: number }
+                confirm_step: { type: number }
+                max_offset: { type: number }
+                max_threshold: { type: number }
+        work_order:
+          type: object
+          properties:
+            confidence_threshold: { type: number }
+            failure_mode: { type: string }
+            failure_mode_by_signal:
+              type: object
+              additionalProperties: { type: string }
+            priority: { type: integer }
+            lead_time: { type: string }
+            auto_cancel_on_dismiss: { type: boolean }
+        warmup_evaluations: { type: integer, minimum: 3 }
+        class_baselines:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              median: { type: number }
+              mad: { type: number }
+        updated_at: { type: string, format: date-time }
+
+    Stats:
+      type: object
+      properties:
+        site: { type: string }
+        total_alerts: { type: integer }
+        open: { type: integer }
+        confirmed: { type: integer }
+        dismissed: { type: integer }
+        alerts_last_24h: { type: integer }
+        alerts_per_day: { type: number }
+        precision_proxy: { type: number }
+        mtta_seconds: { type: number }
+        acknowledged: { type: integer }
+
+    Readiness:
+      type: object
+      properties:
+        status: { type: string, enum: [ready, not_ready] }
+        checks:
+          type: object
+          additionalProperties: { type: string }

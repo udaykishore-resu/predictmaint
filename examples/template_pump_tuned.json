@@ -1,0 +1,48 @@
+{
+  "class": "pump",
+  "version": "2026.2-plant-a",
+  "description": "Plant A pumps: slightly stricter alerting after commissioning review.",
+  "signals": [
+    {"name": "vibration", "unit": "mm/s", "window": 256, "sample_rate_hz": 1000, "min_samples": 256,
+     "bands": [{"name": "1x", "freq_hz": 23.4375}, {"name": "bpfo", "freq_hz": 101.5625}]},
+    {"name": "bearing_temp", "unit": "C", "window": 12, "min_samples": 3, "stats": ["mean", "std"]},
+    {"name": "discharge_pressure", "unit": "bar", "window": 12, "min_samples": 3, "stats": ["mean", "std"]},
+    {"name": "motor_current", "unit": "A", "window": 12, "min_samples": 3, "stats": ["mean", "std"]}
+  ],
+  "runtime_signal": "runtime_hours",
+  "detectors": {
+    "robust_z": {"threshold": 4, "min_mad_rel": 0.02, "min_mad_abs": 0.01,
+      "direction": {"vibration.rms": "up", "vibration.std": "up", "vibration.kurtosis": "up", "vibration.crest": "up",
+                    "vibration.band.1x": "up", "vibration.band.bpfo": "up", "bearing_temp.mean": "up", "bearing_temp.std": "up"}},
+    "hst": {"trees": 25, "depth": 5, "window_size": 64, "seed": 0, "z_range": 5},
+    "cusum": {"feature": "vibration.rms", "k": 0.5, "h": 8, "direction": "up"}
+  },
+  "prior": {"shape": 2.0, "scale_hours": 35000, "horizon_hours": 720, "default_age_hours": 8000},
+  "fusion": {"w_anomaly": 0.6, "w_drift": 0.25, "w_prior": 0.15, "agreement_threshold": 0.5, "hst_share": 0.35},
+  "alerting": {
+    "on_threshold": 0.65, "off_threshold": 0.35, "min_persistence": 3, "clear_persistence": 3,
+    "suppression": "3h", "max_alerts_per_asset_per_hour": 1, "max_alerts_per_site_per_hour": 12,
+    "adaptation": {"dismiss_step": 0.05, "confirm_step": 0.02, "max_offset": 0.2, "max_threshold": 0.9}
+  },
+  "work_order": {
+    "confidence_threshold": 0.6, "failure_mode": "bearing_wear",
+    "failure_mode_by_signal": {"bearing_temp": "bearing_overheating", "discharge_pressure": "cavitation_or_impeller_wear", "motor_current": "mechanical_load_increase"},
+    "priority": 2, "lead_time": "72h", "auto_cancel_on_dismiss": true
+  },
+  "warmup_evaluations": 30,
+  "class_baselines": {
+    "vibration.mean": {"median": 0, "mad": 0.03},
+    "vibration.std": {"median": 0.77, "mad": 0.03},
+    "vibration.rms": {"median": 0.77, "mad": 0.03},
+    "vibration.kurtosis": {"median": 1.9, "mad": 0.12},
+    "vibration.crest": {"median": 2.5, "mad": 0.2},
+    "vibration.band.1x": {"median": 1.0, "mad": 0.05},
+    "vibration.band.bpfo": {"median": 0.06, "mad": 0.03},
+    "bearing_temp.mean": {"median": 58, "mad": 1.0},
+    "bearing_temp.std": {"median": 0.4, "mad": 0.2},
+    "discharge_pressure.mean": {"median": 6.2, "mad": 0.1},
+    "discharge_pressure.std": {"median": 0.08, "mad": 0.04},
+    "motor_current.mean": {"median": 42, "mad": 0.8},
+    "motor_current.std": {"median": 0.6, "mad": 0.3}
+  }
+}

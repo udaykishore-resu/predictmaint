@@ -1,0 +1,141 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/udaykishore-resu/predictmaint
+  tag: ""          # defaults to Chart.appVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Non-secret configuration -> ConfigMap. Keys are the service's env vars.
+config:
+  LOG_LEVEL: info
+  LOG_FORMAT: json
+  ENVIRONMENT: prod
+  STORE_BACKEND: postgres
+  KAFKA_ENABLED: "true"
+  KAFKA_BROKERS: kafka.kafka.svc.cluster.local:9092
+  KAFKA_TOPIC: uns.metrics
+  KAFKA_GROUP: predictmaint
+  OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector.observability.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_INSECURE: "true"
+  OTEL_TRACES_SAMPLER_ARG: "0.1"
+  SHUTDOWN_TIMEOUT: 25s
+  WORKORDER_RETRIES: "5"
+
+# Secrets are NOT rendered by this chart. Point at an existing Secret whose
+# keys are env var names (e.g. POSTGRES_DSN). Create it with your secret
+# manager (External Secrets, Sealed Secrets, Vault Agent ...).
+existingSecret: predictmaint-secrets
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Assets are sharded by Kafka partition: a consumer group with N replicas
+# splits the asset keyspace N ways. Asset state is per replica, so a
+# rebalance re-enters warm-up for moved assets unless snapshots exist.
+terminationGracePeriodSeconds: 30
+
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  readiness:
+    path: /readyz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    failureThreshold: 3
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+
+networkPolicy:
+  enabled: true
+  # Namespaces/pods allowed to reach the API (gateway, technician UI).
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress
+  # Scrapers allowed to reach /metrics.
+  metricsFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
+  # Egress: DNS, Kafka, Postgres, OTLP collector.
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:
+        - port: 9092
+          protocol: TCP
+    - ports:
+        - port: 5432
+          protocol: TCP
+    - ports:
+        - port: 4318
+          protocol: TCP
+
+nodeSelector: {}
+tolerations: []
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: predictmaint
+topologySpreadConstraints: []

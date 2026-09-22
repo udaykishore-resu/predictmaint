@@ -1,0 +1,17 @@
+# Apply with:
+#   gh repo edit udaykishore-resu/predictmaint --description "$(yq .description .github/repo-metadata.yaml)"
+#   gh repo edit udaykishore-resu/predictmaint $(yq -r '.topics[] | "--add-topic " + .' .github/repo-metadata.yaml)
+description: "Predictive maintenance at fleet scale: asset-class templates, deterministic anomaly + Weibull risk fusion, nuisance-proof alerting with technician feedback, and CMMS work orders. Go, Kafka, Postgres, Kubernetes."
+topics:
+  - go
+  - kubernetes
+  - kafka
+  - postgresql
+  - predictive-maintenance
+  - anomaly-detection
+  - industrial-iot
+  - manufacturing
+  - cmms
+  - opentelemetry
+  - prometheus
+  - event-driven

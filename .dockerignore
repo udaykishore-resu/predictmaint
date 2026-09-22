@@ -1,0 +1,10 @@
+.git
+bin/
+coverage.out
+deploy/
+docs/
+examples/
+*.md
+.github/
+.golangci.yaml
+.editorconfig

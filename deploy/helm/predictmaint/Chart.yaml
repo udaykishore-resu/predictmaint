@@ -1,0 +1,12 @@
+apiVersion: v2
+name: predictmaint
+description: Predictive maintenance at fleet scale - asset-class templated anomaly detection, risk fusion, nuisance-proof alerting and CMMS work orders.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/udaykishore-resu/predictmaint
+sources:
+  - https://github.com/udaykishore-resu/predictmaint
+maintainers:
+  - name: Udaykishore Resu
+keywords: [predictive-maintenance, anomaly-detection, kafka, manufacturing]
